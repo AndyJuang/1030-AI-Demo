@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>個資去除工具</title>
+<style>
+  :root {
+    --bg: #f4f6f1; --card: #ffffff; --ink: #1f2a1f; --muted: #667066; --line: #dfe5d8;
+    --accent: #2f6b3a; --accent-ink: #ffffff; --warn: #9a5b00; --warn-bg: #fff4de;
+    --err: #a32121; --err-bg: #fde8e8; --ok-bg: #e5f3e7; --hl: #ffe27a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151a15; --card: #1e251e; --ink: #e8ede4; --muted: #9aa69a; --line: #2f3a2f;
+      --accent: #6fbf7b; --accent-ink: #0f1a10; --warn: #f0c070; --warn-bg: #3a2e14;
+      --err: #ff9a9a; --err-bg: #3a1c1c; --ok-bg: #1d3322; --hl: #6b5a10;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.6 -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif; }
+  header { padding: 20px 16px 8px; max-width: 1180px; margin: 0 auto; }
+  h1 { margin: 0; font-size: 1.5rem; }
+  .sub { color: var(--muted); margin: 4px 0 0; }
+  .chips { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { font-size: .85rem; padding: 2px 10px; border-radius: 99px; background: var(--ok-bg); color: var(--ink); border: 1px solid var(--line); }
+  .chip.bad { background: var(--err-bg); color: var(--err); }
+  main { max-width: 1180px; margin: 0 auto; padding: 8px 16px 48px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-top: 16px; }
+  h2 { margin: 0 0 10px; font-size: 1.1rem; }
+  .step { display: inline-block; width: 1.6em; height: 1.6em; line-height: 1.6em; text-align: center;
+          border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: .85rem; margin-right: 6px; }
+  #drop { border: 2px dashed var(--line); border-radius: 12px; padding: 28px; text-align: center; cursor: pointer; color: var(--muted); }
+  #drop.over, #drop:hover { border-color: var(--accent); color: var(--ink); }
+  button { font: inherit; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .bar { height: 10px; border-radius: 99px; background: var(--line); overflow: hidden; margin-top: 10px; }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  .note { padding: 10px 14px; border-radius: 8px; margin-top: 12px; }
+  .note.warn { background: var(--warn-bg); color: var(--warn); }
+  .note.err { background: var(--err-bg); color: var(--err); }
+  .note.ok { background: var(--ok-bg); }
+  .grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+  th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+  td:nth-child(3) { word-break: break-all; }
+  td:nth-child(2) select { padding: 4px 2px; min-width: 6.5em; }
+  td input[type=text], td select, .row input[type=text], .row select { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--ink); width: 100%; }
+  .src { white-space: nowrap; font-size: .75rem; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--line); color: var(--muted); }
+  .scroll { max-height: 520px; overflow: auto; }
+  #doc { white-space: pre-wrap; word-break: break-all; font-size: .9rem; max-height: 560px; overflow: auto;
+         border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+  mark { background: var(--hl); color: inherit; border-radius: 3px; padding: 0 1px; }
+  .modes { display: flex; gap: 16px; flex-wrap: wrap; margin: 8px 0 12px; }
+  .modes label { cursor: pointer; }
+  .row { display: flex; gap: 8px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
+  .row input[type=text] { flex: 1 1 200px; width: auto; }
+  .row select { width: auto; }
+  .hint { color: var(--muted); font-size: .88rem; }
+  details { margin-top: 10px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>文件個資去除工具</h1>
+  <p class="sub">上傳 Word 或 PDF，由本機的 Gemma 模型找出個資，再標註或換成假資料。</p>
+  <div class="chips">
+    <span class="chip">完全在這台電腦執行，檔案不會上傳到網路</span>
+    <span class="chip" id="modelChip">檢查模型中…</span>
+  </div>
+</header>
+
+<main>
+  <section class="card" id="s1">
+    <h2><span class="step">1</span>選擇檔案</h2>
+    <div id="drop">把 .docx 或 .pdf 檔案拖到這裡，或點一下選擇檔案</div>
+    <input type="file" id="file" accept=".docx,.pdf" class="hidden">
+    <div id="picked" class="hint" style="margin-top:8px"></div>
+    <div class="row"><button class="primary" id="goBtn" disabled>開始偵測個資</button></div>
+    <div id="prog" class="hidden">
+      <div class="bar"><div id="barIn"></div></div>
+      <div class="hint" id="progText"></div>
+    </div>
+    <div id="s1msg"></div>
+  </section>
+
+  <section class="card hidden" id="s2">
+    <h2><span class="step">2</span>確認要去除的項目</h2>
+    <div class="hint">AI 可能會漏抓或誤抓，請看過清單與右側全文。取消勾選的項目不會被處理。</div>
+    <div id="s2msg"></div>
+    <div class="modes">
+      <label><input type="radio" name="mode" value="label_typed" checked> 標註類別（如【姓名】）</label>
+      <label><input type="radio" name="mode" value="label_generic"> 統一標註【機敏個資】</label>
+      <label><input type="radio" name="mode" value="fake"> 換成假資料</label>
+    </div>
+    <div class="grid">
+      <div>
+        <div class="scroll">
+          <table>
+            <thead><tr><th></th><th style="width:8em">類別</th><th>內容</th><th>次數</th><th>來源</th><th style="width:30%">取代為（可自訂）</th></tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+        <div class="row">
+          <input type="text" id="manText" placeholder="漏掉的個資：在右側全文選取文字，或貼在這裡">
+          <select id="manType"></select>
+          <button id="manAdd">加入清單</button>
+        </div>
+      </div>
+      <div>
+        <div class="hint">文件全文（黃色是將被處理的內容）</div>
+        <div id="doc"></div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:16px">
+      <button class="primary" id="redactBtn">產生去識別化文件</button>
+      <span class="hint" id="redactHint"></span>
+    </div>
+  </section>
+
+  <section class="card hidden" id="s3">
+    <h2><span class="step">3</span>完成</h2>
+    <div id="result"></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let TYPES = {}, job = null, entities = [], docText = "", picked = null;
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) {
+    let msg = r.statusText;
+    try { const j = await r.json(); msg = j.detail || msg; } catch (_) {}
+    throw new Error(msg);
+  }
+  return r;
+}
+
+async function health() {
+  try {
+    const h = await (await api("/api/health")).json();
+    TYPES = h.types;
+    const chip = $("modelChip");
+    if (!h.ollama) { chip.textContent = "找不到 Ollama：請先啟動它"; chip.className = "chip bad"; }
+    else if (!h.model_ready) { chip.textContent = `尚未下載模型 ${h.model}`; chip.className = "chip bad"; }
+    else chip.textContent = `模型 ${h.model} 已就緒`;
+  } catch (e) { $("modelChip").textContent = "無法連到伺服器"; $("modelChip").className = "chip bad"; }
+  $("manType").innerHTML = Object.entries(TYPES).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+}
+
+function pick(f) {
+  if (!f) return;
+  picked = f;
+  $("picked").textContent = `已選擇：${f.name}（${(f.size / 1024).toFixed(0)} KB）`;
+  $("goBtn").disabled = false;
+}
+$("drop").onclick = () => $("file").click();
+$("file").onchange = (e) => pick(e.target.files[0]);
+["dragover", "dragenter"].forEach((ev) => $("drop").addEventListener(ev, (e) => { e.preventDefault(); $("drop").classList.add("over"); }));
+["dragleave", "drop"].forEach((ev) => $("drop").addEventListener(ev, (e) => { e.preventDefault(); $("drop").classList.remove("over"); }));
+$("drop").addEventListener("drop", (e) => pick(e.dataTransfer.files[0]));
+
+$("goBtn").onclick = async () => {
+  $("s1msg").innerHTML = ""; $("s2").classList.add("hidden"); $("s3").classList.add("hidden");
+  $("goBtn").disabled = true; $("prog").classList.remove("hidden");
+  $("barIn").style.width = "3%"; $("progText").textContent = "上傳中…";
+  try {
+    const fd = new FormData(); fd.append("file", picked);
+    job = (await (await api("/api/analyze", { method: "POST", body: fd })).json()).job_id;
+    while (true) {
+      await new Promise((r) => setTimeout(r, 800));
+      const j = await (await api(`/api/jobs/${job}`)).json();
+      if (j.status === "analyzing") {
+        const p = j.progress; const pct = p.total ? Math.max(3, (p.done / p.total) * 100) : 3;
+        $("barIn").style.width = pct + "%";
+        $("progText").textContent = p.total ? `AI 偵測中：第 ${Math.min(p.done + 1, p.total)} / ${p.total} 段` : "讀取文件中…";
+      } else if (j.status === "error") { throw new Error(j.error); }
+      else { showReview(j); break; }
+    }
+  } catch (e) {
+    $("s1msg").innerHTML = `<div class="note err">${esc(e.message)}</div>`;
+  }
+  $("goBtn").disabled = false; $("prog").classList.add("hidden");
+};
+
+function showReview(j) {
+  entities = j.entities.map((e) => ({ ...e, on: true, custom: "" }));
+  docText = j.text;
+  $("s2msg").innerHTML = (j.warning ? `<div class="note warn">${esc(j.warning)}</div>` : "") +
+    (j.truncated ? `<div class="note warn">全文太長，右側只顯示前 40000 字，但處理時會涵蓋整份文件。</div>` : "") +
+    (entities.length ? "" : `<div class="note ok">沒有偵測到個資。若你確定有，可在下方手動加入。</div>`);
+  $("s2").classList.remove("hidden");
+  renderRows(); renderDoc(); updateHint();
+  $("s2").scrollIntoView({ behavior: "smooth" });
+}
+
+function placeholder(e) {
+  const mode = document.querySelector("input[name=mode]:checked").value;
+  if (mode === "fake") return "（自動產生假資料）";
+  if (mode === "label_generic") return "【機敏個資】";
+  return `【${TYPES[e.type] || "機敏個資"}】`;
+}
+
+function renderRows() {
+  $("rows").innerHTML = entities.map((e, i) => `
+    <tr>
+      <td><input type="checkbox" data-i="${i}" class="chk" ${e.on ? "checked" : ""}></td>
+      <td><select data-i="${i}" class="typ">${Object.entries(TYPES).map(([k, v]) => `<option value="${k}" ${k === e.type ? "selected" : ""}>${v}</option>`).join("")}</select></td>
+      <td>${esc(e.text)}${e.type === "NAME" && e.text.length <= 2 ? `<div class="hint">⚠ 名字很短，可能誤傷其他詞，請看右側黃色標示</div>` : ""}</td><td>${e.count}</td><td><span class="src">${e.source}</span></td>
+      <td><input type="text" data-i="${i}" class="cus" value="${esc(e.custom)}" placeholder="${esc(placeholder(e))}"></td>
+    </tr>`).join("");
+  document.querySelectorAll(".chk").forEach((el) => el.onchange = () => { entities[el.dataset.i].on = el.checked; renderDoc(); updateHint(); });
+  document.querySelectorAll(".typ").forEach((el) => el.onchange = () => { entities[el.dataset.i].type = el.value; renderRows(); });
+  document.querySelectorAll(".cus").forEach((el) => el.oninput = () => { entities[el.dataset.i].custom = el.value; });
+}
+document.querySelectorAll("input[name=mode]").forEach((el) => el.onchange = () => {
+  document.querySelectorAll(".cus").forEach((c) => c.placeholder = placeholder(entities[c.dataset.i]));
+});
+
+function renderDoc() {
+  const keys = entities.filter((e) => e.on).map((e) => e.text).sort((a, b) => b.length - a.length);
+  if (!keys.length) { $("doc").textContent = docText; return; }
+  const re = new RegExp(keys.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g");
+  let out = "", last = 0, m;
+  while ((m = re.exec(docText))) {
+    out += esc(docText.slice(last, m.index)) + `<mark>${esc(m[0])}</mark>`;
+    last = m.index + m[0].length;
+  }
+  $("doc").innerHTML = out + esc(docText.slice(last));
+}
+
+function updateHint() {
+  const n = entities.filter((e) => e.on).length;
+  $("redactHint").textContent = `已選取 ${n} 個項目`;
+  $("redactBtn").disabled = n === 0;
+}
+
+$("doc").addEventListener("mouseup", () => {
+  const s = window.getSelection().toString().trim();
+  if (s && s.length <= 60) $("manText").value = s;
+});
+
+$("manAdd").onclick = () => {
+  const text = $("manText").value.trim();
+  if (!text) return;
+  if (entities.some((e) => e.text === text)) { $("manText").value = ""; return; }
+  entities.push({ text, type: $("manType").value, source: "手動", count: docText.split(text).length - 1, on: true, custom: "" });
+  $("manText").value = "";
+  renderRows(); renderDoc(); updateHint();
+};
+
+$("redactBtn").onclick = async () => {
+  $("redactBtn").disabled = true; $("redactHint").textContent = "產生中…";
+  try {
+    const body = {
+      mode: document.querySelector("input[name=mode]:checked").value,
+      items: entities.filter((e) => e.on).map((e) => ({ text: e.text, type: e.type, replacement: e.custom })),
+    };
+    const r = await (await api(`/api/jobs/${job}/redact`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
+    showResult(r);
+  } catch (e) {
+    $("redactHint").innerHTML = `<span style="color:var(--err)">${esc(e.message)}</span>`;
+  }
+  $("redactBtn").disabled = false; updateHint();
+};
+
+function showResult(r) {
+  let html = `<div class="note ok">已處理 ${r.total} 處。</div>`;
+  (r.warnings || []).forEach((w) => { html += `<div class="note warn">${esc(w)}</div>`; });
+  if (r.residual.length) html += `<div class="note err">檢查發現輸出檔裡仍找得到以下原始內容，請不要直接使用，建議在清單補上類似寫法後重做：<br><b>${r.residual.map(esc).join("、")}</b></div>`;
+  else html += `<div class="note ok">已重新讀回輸出檔檢查，清單內的個資沒有殘留。</div>`;
+  if (r.not_found.length) html += `<div class="note warn">以下項目在文件裡沒有找到可取代的位置（可能跨行、在圖片裡或寫法不同）：<br>${r.not_found.map(esc).join("、")}</div>`;
+  html += `<div class="row"><a href="${r.download}"><button class="primary">下載 ${esc(r.name)}</button></a>
+           <button id="wipe">清除伺服器上的暫存檔</button></div>
+           <div class="note warn">圖片裡的文字（例如掃描的身分證影本、印章）本工具看不到，請人工再看過一遍成品。</div>
+           <details><summary>取代明細</summary><table><tr><th>原文</th><th>取代為</th><th>處數</th></tr>
+           ${r.stats.map((s) => `<tr><td>${esc(s.text)}</td><td>${esc(s.replacement)}</td><td>${s.count}</td></tr>`).join("")}</table></details>`;
+  $("result").innerHTML = html;
+  $("s3").classList.remove("hidden");
+  $("wipe").onclick = async () => { await api(`/api/jobs/${job}`, { method: "DELETE" }); $("result").innerHTML = `<div class="note ok">已清除。要處理下一份請重新整理頁面。</div>`; };
+  $("s3").scrollIntoView({ behavior: "smooth" });
+}
+
+health();
+</script>
+</body>
+</html>

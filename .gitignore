@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+jobs/
+server.log
+.DS_Store
+*.bak
