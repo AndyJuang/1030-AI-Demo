@@ -70,3 +70,12 @@ curl -s http://127.0.0.1:8790/api/health
 ## 程式結構
 
 見 `README.md` 最後的「檔案說明」。
+
+## Cloud Agent（Cursor）
+
+環境啟動後，Ollama 與網頁已經在跑，網址是 http://127.0.0.1:8790。這份 Linux 映像沒有 systemd，Ollama 是用 `ollama serve` 起來的，不要改查 `systemctl`。工作目錄裡的虛擬環境是 `.venv`。不要再執行 `install.sh`，那個腳本會把專案 clone 到另一個目錄。
+
+在 Linux 上跑離線測試時：
+
+- `tests/test_redact.py` 的 Word 三種模式會過。裝了 `fonts-noto-cjk` 之後，PDF 的 `label_typed` 會把「聯」「年」「金」寫成相容漢字，字元比對會失敗；實際輸出仍會清掉個資。
+- `tests/test_hidden.py` 的 PDF 案例寫死 macOS 字型路徑，在 Linux 建立測試 PDF 時會失敗。前面的 Word 案例會過。
